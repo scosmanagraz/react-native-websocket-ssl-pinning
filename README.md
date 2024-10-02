@@ -1,23 +1,43 @@
 # react-native-websocket-ssl-pinning
 
-Creates a secure WebSocket connection using ssl-pinning technique
+Creates a secure WebSocket connection using ssl-pinning technique.
+
+⚠ **THIS PROJECT IS STILL IN DEVELOPMENT STAGE** ⚠
 
 ## Installation
 
 ```sh
-npm install react-native-websocket-ssl-pinning
+yarn add react-native-websocket-ssl-pinning
 ```
 
 ## Usage
 
-
+Create the connection
 ```js
-import { multiply } from 'react-native-websocket-ssl-pinning';
+import { fetch } from 'react-native-websocket-ssl-pinning';
 
-// ...
+try{
+  const response = await fetch(`wss://${serverip}/`, {
+	method: 'GET',
+	timeoutInterval: 10000, // Request timeout
+	sslPinning: {
+	  certs: ['rootCA_public'],
+	},
+  });
+  
+  if (response.code === 101) {
+	console.log(
+	  'Switching protocols. Starting secure web socket connection...',
+	);
 
-const result = await multiply(3, 7);
+	socketOpen()
+  }
+} catch(e) {
+  console.error(e);
+}
 ```
+
+*TODO: finish usage*
 
 
 ## Contributing
