@@ -1404,7 +1404,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@babel/preset-env@npm:^7.20.0, @babel/preset-env@npm:^7.25.2":
+"@babel/preset-env@npm:^7.25.2":
   version: 7.25.4
   resolution: "@babel/preset-env@npm:7.25.4"
   dependencies:
@@ -1576,7 +1576,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@babel/runtime@npm:^7.20.0, @babel/runtime@npm:^7.25.0, @babel/runtime@npm:^7.8.4":
+"@babel/runtime@npm:^7.25.0, @babel/runtime@npm:^7.8.4":
   version: 7.25.6
   resolution: "@babel/runtime@npm:7.25.6"
   dependencies:
@@ -2901,29 +2901,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@react-native/metro-config@npm:0.75.3":
-  version: 0.75.3
-  resolution: "@react-native/metro-config@npm:0.75.3"
-  dependencies:
-    "@react-native/js-polyfills": 0.75.3
-    "@react-native/metro-babel-transformer": 0.75.3
-    metro-config: ^0.80.3
-    metro-runtime: ^0.80.3
-  checksum: 8e1e6d6f58b8269ad8cb4c18c564eee59c273b5abf4768cec2117dd2f2bdafd9fb4c895a0e2195199ac685a215083e6ce142983865e673f0ea91b785deaecd2a
-  languageName: node
-  linkType: hard
-
 "@react-native/normalize-colors@npm:0.75.3":
   version: 0.75.3
   resolution: "@react-native/normalize-colors@npm:0.75.3"
   checksum: 78c43611fa5c0dedcc5f46423e7c8def0a1518917c829f45028a43a6e9edd7e9986303b63b7c93785eb6ed7bb6153c6f649ec0ab6cf6798981e16be22f737894
-  languageName: node
-  linkType: hard
-
-"@react-native/typescript-config@npm:0.75.3":
-  version: 0.75.3
-  resolution: "@react-native/typescript-config@npm:0.75.3"
-  checksum: ed3164fde0147bb0ae180d8a64b3bf999be5f4879566bcae87e13179b6cbc3bd64fd52109f5c574b72d72860ead0124a4d6524e9bfe377b33e3bf39a882596d3
   languageName: node
   linkType: hard
 
@@ -10774,22 +10755,6 @@ __metadata:
   checksum: 880ba5c9cf45f20dc5d7423a82b6963bb61d3fa41096b1d7ac2c7a141dfaedd5386ae6d29f80861922911220b8d0d689c831e01d9c8aca06afbb53933fa0f8b5
   languageName: node
   linkType: hard
-
-"react-native-websocket-ssl-pinning-example@workspace:example":
-  version: 0.0.0-use.local
-  resolution: "react-native-websocket-ssl-pinning-example@workspace:example"
-  dependencies:
-    "@babel/core": ^7.20.0
-    "@babel/preset-env": ^7.20.0
-    "@babel/runtime": ^7.20.0
-    "@react-native/babel-preset": 0.75.3
-    "@react-native/metro-config": 0.75.3
-    "@react-native/typescript-config": 0.75.3
-    react: 18.3.1
-    react-native: 0.75.3
-    react-native-builder-bob: ^0.30.2
-  languageName: unknown
-  linkType: soft
 
 "react-native-websocket-ssl-pinning@workspace:.":
   version: 0.0.0-use.local

@@ -15,15 +15,15 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.network.ForwardingCookieHandler
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import com.websocketsslpinning.Utils.OkHttpUtils
-import com.google.gson.Gson
-import okhttp3.*
+import com.toyberman.Utils.OkHttpUtils
 import java.io.IOException
 import java.net.URI
 import java.net.URISyntaxException
 import java.util.*
+import okhttp3.*
+import com.google.gson.Gson
 
-class RNSslPinningModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+class WebSocketSslPinningModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
     private val cookieStore: HashMap<String, MutableList<Cookie>> = HashMap()
     private var cookieJar: CookieJar? = null
@@ -35,18 +35,25 @@ class RNSslPinningModule(private val reactContext: ReactApplicationContext) : Re
         cookieHandler = ForwardingCookieHandler(reactContext)
         cookieJar = object : CookieJar {
             override fun saveFromResponse(url: HttpUrl, unmodifiableCookieList: List<Cookie>) {
-                for (cookie in unmodifiableCookieList) {
-                    setCookie(url, cookie)
+                synchronized(this) {
+                    for (cookie in unmodifiableCookieList) {
+                        setCookie(url, cookie)
+                    }
                 }
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
-                return cookieStore[url.host]?.toList() ?: emptyList()
+                val cookies = cookieStore[url.host]
+                return cookies ?: ArrayList()
             }
 
             private fun setCookie(url: HttpUrl, cookie: Cookie) {
                 val host = url.host
-                val cookieListForUrl = cookieStore.getOrPut(host) { mutableListOf() }
+                var cookieListForUrl = cookieStore[host]
+                if (cookieListForUrl == null) {
+                    cookieListForUrl = ArrayList()
+                    cookieStore[host] = cookieListForUrl
+                }
                 try {
                     putCookie(url, cookieListForUrl, cookie)
                 } catch (e: Exception) {
@@ -56,11 +63,25 @@ class RNSslPinningModule(private val reactContext: ReactApplicationContext) : Re
 
             @Throws(URISyntaxException::class, IOException::class)
             private fun putCookie(url: HttpUrl, storedCookieList: MutableList<Cookie>, newCookie: Cookie) {
-                val oldCookie = storedCookieList.find { it.name == newCookie.name && it.path == newCookie.path }
-                oldCookie?.let { storedCookieList.remove(it) }
+                var oldCookie: Cookie? = null
+                val cookieMap: MutableMap<String, List<String>> = HashMap()
+
+                for (storedCookie in storedCookieList) {
+                    // create key for comparison
+                    val oldCookieKey = storedCookie.name + storedCookie.path
+                    val newCookieKey = newCookie.name + newCookie.path
+
+                    if (oldCookieKey == newCookieKey) {
+                        oldCookie = storedCookie
+                        break
+                    }
+                }
+                if (oldCookie != null) {
+                    storedCookieList.remove(oldCookie)
+                }
                 storedCookieList.add(newCookie)
 
-                val cookieMap = mapOf("Set-cookie" to listOf(newCookie.toString()))
+                cookieMap["Set-cookie"] = Collections.singletonList(newCookie.toString())
                 cookieHandler.put(url.uri(), cookieMap)
             }
         }
@@ -89,8 +110,14 @@ class RNSslPinningModule(private val reactContext: ReactApplicationContext) : Re
     @ReactMethod
     fun removeCookieByName(cookieName: String, promise: Promise) {
         for (domain in cookieStore.keys) {
-            val newCookiesList = cookieStore[domain]?.filterNot { it.name == cookieName }?.toMutableList()
-            newCookiesList?.let { cookieStore[domain] = it }
+            val newCookiesList: MutableList<Cookie> = ArrayList()
+            val cookies = cookieStore[domain]
+            cookies?.forEach { cookie ->
+                if (cookie.name != cookieName) {
+                    newCookiesList.add(cookie)
+                }
+            }
+            cookieStore[domain] = newCookiesList
         }
         promise.resolve(null)
     }
@@ -120,7 +147,12 @@ class RNSslPinningModule(private val reactContext: ReactApplicationContext) : Re
 
     @ReactMethod
     fun fetch(hostname: String, options: ReadableMap, callback: Callback) {
-        val response = Arguments.createMap()
+        if (webSocketInstance != null) {
+            callback.invoke(Throwable("WebSocket is already open").getMessage(), null)
+            return
+        }
+
+        val response: WritableMap = Arguments.createMap()
         val domainName: String = try {
             getDomainName(hostname)
         } catch (e: URISyntaxException) {
@@ -146,10 +178,10 @@ class RNSslPinningModule(private val reactContext: ReactApplicationContext) : Re
             val request = Request.Builder().url(hostname).build()
             val wsClient = client!!.newBuilder().build()
 
-            wsClient.newWebSocket(request, object : WebSocketListener() {
+            wsClient?.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     webSocketInstance = webSocket
-                    val responseMap = Arguments.createMap()
+                    val responseMap: WritableMap = Arguments.createMap()
                     responseMap.putString("status", "WebSocket Opened")
                     responseMap.putInt("code", response.code)
                     responseMap.putString("message", response.message)
@@ -162,7 +194,8 @@ class RNSslPinningModule(private val reactContext: ReactApplicationContext) : Re
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    callback.invoke(t.message)
+                    callback.invoke(t.message, null)
+                    webSocketInstance = null
                 }
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -171,14 +204,19 @@ class RNSslPinningModule(private val reactContext: ReactApplicationContext) : Re
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     sendEvent("onClosed", reason)
+                    webSocketInstance = null
                 }
             })
         }
     }
 
     @ReactMethod
-    fun closeWebSocket(reason: String) {
-        webSocketInstance?.close(1000, reason)
+    fun closeWebSocket(reason: String, callback: Callback) {
+        webSocketInstance?.let {
+            it.close(1000, reason)
+            webSocketInstance = null
+            callback.invoke(null, "WebSocket successfully closed")
+        } ?: callback.invoke("WebSocket cannot close because it has not yet been initialized", null)
     }
 
     @NonNull
