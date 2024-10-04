@@ -5,30 +5,22 @@ import android.net.Uri
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
-import okhttp3.CertificatePinner
-import okhttp3.CookieJar
-import okhttp3.MediaType
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.*
 import okhttp3.logging.HttpLoggingInterceptor
-import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
+import org.json.JSONException
+import java.io.*
 import java.security.KeyStore
 import java.security.cert.Certificate
 import java.security.cert.CertificateFactory
-import java.util.Arrays
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+
+/**
+ * Created by Max Toyberman on 2/11/18.
+ */
 
 object OkHttpUtils {
 
@@ -38,29 +30,32 @@ object OkHttpUtils {
     private const val FILE = "file"
     private val clientsByDomain = HashMap<String, OkHttpClient>()
     private var defaultClient: OkHttpClient? = null
-    private lateinit var sslContext: SSLContext
-    private var contentType = "application/json; charset=utf-8"
-    var mediaType: MediaType? = MediaType.parse(contentType)
+    private var sslContext: SSLContext? = null
+    private var content_type = "application/json; charset=utf-8"
+    var mediaType: MediaType? = MediaType.parse(content_type)
 
-    fun buildOkHttpClient(cookieJar: CookieJar, domainName: String, certs: ReadableArray, options: ReadableMap): OkHttpClient? {
+    @JvmStatic
+    fun buildOkHttpClient(cookieJar: CookieJar, domainName: String, certs: ReadableArray, options: ReadableMap): OkHttpClient {
+
         var client: OkHttpClient? = null
         var certificatePinner: CertificatePinner? = null
         if (!clientsByDomain.containsKey(domainName)) {
+            // add logging interceptor
             val logging = HttpLoggingInterceptor()
-            logging.level = HttpLoggingInterceptor.Level.BODY
+            logging.setLevel(HttpLoggingInterceptor.Level.BODY)
 
             val clientBuilder = OkHttpClient.Builder()
             clientBuilder.cookieJar(cookieJar)
 
             if (options.hasKey("pkPinning") && options.getBoolean("pkPinning")) {
+                // public key pinning
                 certificatePinner = initPublicKeyPinning(certs, domainName)
                 clientBuilder.certificatePinner(certificatePinner)
             } else {
+                // ssl pinning
                 val manager = initSSLPinning(certs)
-                clientBuilder.sslSocketFactory(sslContext.socketFactory, manager)
+                clientBuilder.sslSocketFactory(sslContext!!.socketFactory, manager)
             }
-
-            // clientBuilder.addInterceptor(logging)
 
             client = clientBuilder.build()
             clientsByDomain[domainName] = client
@@ -71,47 +66,52 @@ object OkHttpUtils {
 
         if (options.hasKey("timeoutInterval")) {
             val timeout = options.getInt("timeoutInterval")
-            val client2 = client.newBuilder()
+            // Copy to customize OkHttp for this request.
+            return client!!.newBuilder()
                 .readTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
                 .writeTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
                 .connectTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
                 .build()
-            return client2
         }
 
-        return client
+        return client!!
     }
 
-    fun buildDefaultOkHttpClient(cookieJar: CookieJar, domainName: String, options: ReadableMap): OkHttpClient? {
+    @JvmStatic
+    fun buildDefaultOHttpClient(cookieJar: CookieJar, domainName: String, options: ReadableMap): OkHttpClient {
+
         if (defaultClient == null) {
+
             val logging = HttpLoggingInterceptor()
-            logging.level = HttpLoggingInterceptor.Level.BODY
+            logging.setLevel(HttpLoggingInterceptor.Level.BODY)
 
             val clientBuilder = OkHttpClient.Builder()
             clientBuilder.cookieJar(cookieJar)
-
-            // clientBuilder.addInterceptor(logging)
 
             defaultClient = clientBuilder.build()
         }
 
         if (options.hasKey("timeoutInterval")) {
             val timeout = options.getInt("timeoutInterval")
-            defaultClient = defaultClient?.newBuilder()
-                ?.readTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
-                ?.writeTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
-                ?.connectTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
-                ?.build()
+
+            defaultClient = defaultClient!!.newBuilder()
+                .readTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
+                .writeTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
+                .connectTimeout(timeout.toLong(), TimeUnit.MILLISECONDS)
+                .build()
         }
 
-        return defaultClient
+        return defaultClient!!
     }
 
     private fun initPublicKeyPinning(pins: ReadableArray, domain: String): CertificatePinner {
+
         val certificatePinnerBuilder = CertificatePinner.Builder()
+        // add all keys to the certificates pinner
         for (i in 0 until pins.size()) {
-            certificatePinnerBuilder.add(domain, pins.getString(i))
+            certificatePinnerBuilder.add(domain, pins.getString(i)!!)
         }
+
         return certificatePinnerBuilder.build()
     }
 
@@ -125,14 +125,13 @@ object OkHttpUtils {
             keyStore.load(null, null)
 
             for (i in 0 until certs.size()) {
-                val filename = certs.getString(i)
-                val caInput: InputStream = BufferedInputStream(OkHttpUtils::class.java.classLoader?.getResourceAsStream("assets/$filename.cer")!!)
+                val filename = certs.getString(i)!!
+                val caInput = BufferedInputStream(OkHttpUtils::class.java.classLoader.getResourceAsStream("assets/$filename.cer"))
                 val ca: Certificate
-                try {
-                    ca = cf.generateCertificate(caInput)
-                } finally {
-                    caInput.close()
+                caInput.use {
+                    ca = cf.generateCertificate(it)
                 }
+
                 keyStore.setCertificateEntry(filename, ca)
             }
 
@@ -142,14 +141,15 @@ object OkHttpUtils {
 
             val trustManagers = tmf.trustManagers
             if (trustManagers.size != 1 || trustManagers[0] !is X509TrustManager) {
-                throw IllegalStateException("Unexpected default trust managers:" + Arrays.toString(trustManagers))
+                throw IllegalStateException("Unexpected default trust managers: ${trustManagers.contentToString()}")
             }
             trustManager = trustManagers[0] as X509TrustManager
-            sslContext.init(null, arrayOf(trustManager), null)
 
+            sslContext!!.init(null, arrayOf<TrustManager>(trustManager), null)
         } catch (e: Exception) {
             e.printStackTrace()
         }
+
         return trustManager
     }
 
@@ -158,26 +158,26 @@ object OkHttpUtils {
             return false
         }
         val value = part.getMap(1)
-        return value.hasKey("type") && (value.hasKey("uri") || value.hasKey("path"))
+        return value!!.hasKey("type") && (value.hasKey("uri") || value.hasKey("path"))
     }
 
     private fun addFormDataPart(context: Context, multipartBodyBuilder: MultipartBody.Builder, fileData: ReadableMap, key: String) {
-        var uri = Uri.parse("")
+        var _uri = Uri.parse("")
         if (fileData.hasKey("uri")) {
-            uri = Uri.parse(fileData.getString("uri"))
+            _uri = Uri.parse(fileData.getString("uri"))
         } else if (fileData.hasKey("path")) {
-            uri = Uri.parse(fileData.getString("path"))
+            _uri = Uri.parse(fileData.getString("path"))
         }
-        val type = fileData.getString("type")
+        val type = fileData.getString("type")!!
         var fileName = ""
         if (fileData.hasKey("fileName")) {
-            fileName = fileData.getString("fileName")
+            fileName = fileData.getString("fileName")!!
         } else if (fileData.hasKey("name")) {
-            fileName = fileData.getString("name")
+            fileName = fileData.getString("name")!!
         }
 
         try {
-            val file = getTempFile(context, uri)
+            val file = getTempFile(context, _uri)
             multipartBodyBuilder.addFormDataPart(key, fileName, RequestBody.create(MediaType.parse(type), file))
         } catch (e: IOException) {
             e.printStackTrace()
@@ -189,19 +189,19 @@ object OkHttpUtils {
         multipartBodyBuilder.setType(MediaType.parse("multipart/form-data"))
         if (formData.hasKey("_parts")) {
             val parts = formData.getArray("_parts")
-            for (i in 0 until parts.size()) {
+            for (i in 0 until parts!!.size()) {
                 val part = parts.getArray(i)
                 var key = ""
-                when (part.getType(0)) {
-                    ReadableType.String -> key = part.getString(0)
+                when (part!!.getType(0)) {
+                    ReadableType.String -> key = part.getString(0)!!
                     ReadableType.Number -> key = part.getInt(0).toString()
                 }
 
                 if (isFilePart(part)) {
                     val fileData = part.getMap(1)
-                    addFormDataPart(context, multipartBodyBuilder, fileData, key)
+                    addFormDataPart(context, multipartBodyBuilder, fileData!!, key)
                 } else {
-                    val value = part.getString(1)
+                    val value = part.getString(1)!!
                     multipartBodyBuilder.addFormDataPart(key, value)
                 }
             }
@@ -209,8 +209,10 @@ object OkHttpUtils {
         return multipartBodyBuilder.build()
     }
 
+    @JvmStatic
     @Throws(JSONException::class)
     fun buildRequest(context: Context, options: ReadableMap, hostname: String): Request {
+
         val requestBuilder = Request.Builder()
         var body: RequestBody? = null
 
@@ -221,18 +223,17 @@ object OkHttpUtils {
         }
 
         if (options.hasKey(METHOD_KEY)) {
-            method = options.getString(METHOD_KEY)
+            method = options.getString(METHOD_KEY)!!
         }
 
         if (options.hasKey(BODY_KEY)) {
-            val bodyType = options.getType(BODY_KEY)
-            when (bodyType) {
-                ReadableType.String -> body = RequestBody.create(mediaType, options.getString(BODY_KEY))
+            when (options.getType(BODY_KEY)) {
+                ReadableType.String -> body = RequestBody.create(mediaType, options.getString(BODY_KEY)!!)
                 ReadableType.Map -> {
                     val bodyMap = options.getMap(BODY_KEY)
-                    if (bodyMap.hasKey("formData")) {
+                    if (bodyMap!!.hasKey("formData")) {
                         val formData = bodyMap.getMap("formData")
-                        body = buildFormDataRequestBody(context, formData)
+                        body = buildFormDataRequestBody(context, formData!!)
                     } else if (bodyMap.hasKey("_parts")) {
                         body = buildFormDataRequestBody(context, bodyMap)
                     }
@@ -245,14 +246,15 @@ object OkHttpUtils {
             .build()
     }
 
+    @JvmStatic
     @Throws(IOException::class)
     fun getTempFile(context: Context, uri: Uri): File {
         val file = File.createTempFile("media", null)
         val inputStream = context.contentResolver.openInputStream(uri)
-        val outputStream: OutputStream = BufferedOutputStream(FileOutputStream(file))
+        val outputStream = BufferedOutputStream(FileOutputStream(file))
         val buffer = ByteArray(1024)
         var len: Int
-        while (inputStream.read(buffer).also { len = it } != -1) {
+        while (inputStream!!.read(buffer).also { len = it } != -1) {
             outputStream.write(buffer, 0, len)
         }
         inputStream.close()
@@ -262,11 +264,11 @@ object OkHttpUtils {
 
     private fun setRequestHeaders(options: ReadableMap, requestBuilder: Request.Builder) {
         val map = options.getMap(HEADERS_KEY)
-        Utilities.addHeadersFromMap(map, requestBuilder)
+        // add headers to request
+        Utilities.addHeadersFromMap(map!!, requestBuilder)
         if (map.hasKey("content-type")) {
-            contentType = map.getString("content-type")
-            mediaType = MediaType.parse(contentType)
+            content_type = map.getString("content-type")!!
+            mediaType = MediaType.parse(content_type)
         }
     }
 }
-
