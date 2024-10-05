@@ -6,8 +6,8 @@ const LINKING_ERROR =
   '- You rebuilt the app after installing the package\n' +
   '- You are not using Expo Go\n';
 
-const WebsocketSslPinning = NativeModules.WebsocketSslPinning
-  ? NativeModules.WebsocketSslPinning
+const WebSocketSslPinning = NativeModules.WebSocketSslPinning
+  ? NativeModules.WebSocketSslPinning
   : new Proxy(
       {},
       {
@@ -30,7 +30,7 @@ const fetch = async (url: String, obj: any) => {
 
   try {
     const res = await new Promise<any>((resolve, reject) => {
-      WebsocketSslPinning.fetch(url, obj, (err: String, response: String) => {
+      WebSocketSslPinning.fetch(url, obj, (err: String, response: String) => {
         if (err) {
           console.log(err);
           return reject(err);
@@ -69,7 +69,7 @@ const fetch = async (url: String, obj: any) => {
 
 const getCookies = (domain: string) => {
   if (domain) {
-    return WebsocketSslPinning.getCookies(domain);
+    return WebSocketSslPinning.getCookies(domain);
   }
 
   return Promise.reject('Domain cannot be empty');
@@ -77,14 +77,14 @@ const getCookies = (domain: string) => {
 
 const removeCookieByName = (name: string) => {
   if (name) {
-    return WebsocketSslPinning.removeCookieByName(name);
+    return WebSocketSslPinning.removeCookieByName(name);
   }
 
   return Promise.reject('Cookie Name cannot be empty');
 };
 
 const closeWebSocket = () => {
-  WebsocketSslPinning.closeWebSocket(
+  WebSocketSslPinning.closeWebSocket(
     'Client initiated closure',
     (error: string, successMessage: string) => {
       if (error) {
@@ -99,7 +99,7 @@ const closeWebSocket = () => {
 const sendWebSocketMessage = async (message: any) => {
   try {
     const res = await new Promise<any>((resolve, reject) => {
-      WebsocketSslPinning.sendWebSocketMessage(
+      WebSocketSslPinning.sendWebSocketMessage(
         message,
         (err: string, response: string) => {
           if (err) {
@@ -138,7 +138,7 @@ const sendWebSocketMessage = async (message: any) => {
   }
 };
 
-const eventEmitter = new NativeEventEmitter(NativeModules.WebsocketSslPinning);
+const eventEmitter = new NativeEventEmitter(NativeModules.WebSocketSslPinning);
 
 export {
   fetch,
