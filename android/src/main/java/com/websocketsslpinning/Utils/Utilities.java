@@ -1,4 +1,4 @@
-package com.websocketsslpinning.utils
+package com.websocketsslpinning.utils;
 
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
