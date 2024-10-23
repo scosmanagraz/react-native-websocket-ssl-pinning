@@ -299,7 +299,7 @@ public class WebSocketSslPinningModule extends ReactContextBaseJavaModule {
 
                 @Override
                 public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-                    callback.invoke(t.getMessage(), null);
+                    webSocket.close(1000, null);
                     webSocketInstance = null;
                 }
 
