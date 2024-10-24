@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
 import okhttp3.Cookie;
@@ -89,6 +90,12 @@ public class WebSocketSslPinningModule extends ReactContextBaseJavaModule {
     private CookieJar cookieJar = null;
     private ForwardingCookieHandler cookieHandler;
     private OkHttpClient client;
+
+    public enum State {
+        CLOSED, CLOSING, CONNECT_ERROR, RECONNECT_ATTEMPT, RECONNECTING, OPENING, OPEN
+    }
+
+    private static State state;
 
     public WebSocketSslPinningModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -229,14 +236,13 @@ public class WebSocketSslPinningModule extends ReactContextBaseJavaModule {
     public void sendWebSocketMessage(String message, final Callback callback) {
         if (webSocketInstance != null) {
             try {
-                // Send the WebSocket message
                 webSocketInstance.send(message);
                 callback.invoke(null, "Message sent successfully");
             } catch (Exception e) {
                 callback.invoke("SEND_ERROR", "Failed to send message: " + e.getMessage());
             }
         } else {
-            callback.invoke(new Throwable("WebSocket not initialized"));
+            callback.invoke(new Throwable("WebSocket not initialized").getMessage());
         }
     }
 
@@ -276,12 +282,18 @@ public class WebSocketSslPinningModule extends ReactContextBaseJavaModule {
 
             // Initialize WebSocket request
             Request request = new Request.Builder().url(hostname).build();
-            OkHttpClient wsClient = client.newBuilder().build();
+            state = state.OPENING;
+
+            OkHttpClient wsClient = client.newBuilder().pingInterval(2, TimeUnit.SECONDS)
+            .connectTimeout(2, TimeUnit.SECONDS)
+            .readTimeout(2, TimeUnit.SECONDS)
+            .writeTimeout(2, TimeUnit.SECONDS).build();
             
             // Open the WebSocket connection
             wsClient.newWebSocket(request, new WebSocketListener() {
                 @Override
                 public void onOpen(WebSocket webSocket, Response response) {
+                    state = state.OPEN;
                     webSocketInstance = webSocket;
 
                     WritableMap responseMap = Arguments.createMap();
@@ -299,17 +311,25 @@ public class WebSocketSslPinningModule extends ReactContextBaseJavaModule {
 
                 @Override
                 public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-                    webSocket.close(1000, null);
-                    webSocketInstance = null;
+                    // used to be open
+                    if (state == state.OPEN) {
+                        sendEvent("onFailure", "WebSocket closed unexpectedly");
+                        webSocketInstance = null;
+                    // was not open, so callback.invoke() was never called
+                    } else {
+                        callback.invoke("WebSocket failed to connect", null);
+                    }
                 }
 
                 @Override
                 public void onClosing(WebSocket webSocket, int code, String reason) {
+                    state = state.CLOSING;
                     webSocket.close(1000, null);
                 }
 
                 @Override
                 public void onClosed(WebSocket webSocket, int code, String reason) {
+                    state = state.CLOSED;
                     sendEvent("onClosed", reason);
                     webSocketInstance = null;
                 }
@@ -320,9 +340,15 @@ public class WebSocketSslPinningModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void closeWebSocket(String reason, Callback callback) {
-        if (webSocketInstance != null) {
+        if (state == state.RECONNECTING || state == state.OPENING) {
+            if (webSocketInstance != null) {
+                webSocketInstance.cancel();
+            }
+            callback.invoke(null, "WebSocket connection cancelled");
+        }
+        else if (state == state.OPEN) {
             webSocketInstance.close(1000, reason);
-            webSocketInstance = null;
+            state = state.CLOSING;
             callback.invoke(null, "WebSocket successfully closed");
         } else {
             callback.invoke("WebSocket cannot close because it has not yet been initialized", null);
@@ -345,6 +371,17 @@ public class WebSocketSslPinningModule extends ReactContextBaseJavaModule {
     @Override
     public String getName() {
         return "WebSocketSslPinning";
+    }
+
+    // Required for rn built in EventEmitter Calls.
+    @ReactMethod
+    public void addListener(String eventName) {
+        // Suppresses warnings
+    }
+
+    @ReactMethod
+    public void removeListeners(Integer count) {
+        // Suppresses warnings
     }
 
 }
